@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const derive = promisify(scrypt);
+const previewImage = readFileSync(new URL('./doomsday-preview.png', import.meta.url));
 const sessionSeconds = 30 * 24 * 60 * 60;
 const hashToken = token => createHash('sha256').update(token).digest('hex');
 const passwordHash = (password, salt) =>
@@ -75,6 +76,15 @@ export async function watchlistServer({ database, storage = sqlite(database), or
   const server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url, origin).pathname;
+      if ((req.method === 'GET' || req.method === 'HEAD') && path === '/doomsday-preview.png') {
+        res.writeHead(200, {
+          'Content-Type': 'image/png',
+          'Content-Length': previewImage.length,
+          'Cache-Control': 'public, max-age=86400',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        return res.end(req.method === 'GET' ? previewImage : undefined);
+      }
       if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
