@@ -104,8 +104,8 @@ export async function watchlistServer({ database, storage = sqlite(database), or
       if (path === '/api/login' || path === '/api/register') {
         const username = typeof data.username === 'string' ? data.username.trim().toLowerCase() : '';
         const password = typeof data.password === 'string' ? data.password : '';
-        if (!/^[a-z0-9_]{3,32}$/.test(username) || password.length < 15 || password.length > 128) {
-          return respond(res, 400, { error: 'Use 3–32 letters, numbers or underscores and a password of 15–128 characters.' });
+        if (!/^[a-z0-9_]{3,32}$/.test(username) || password.length < 8 || password.length > 128) {
+          return respond(res, 400, { error: 'Use 3–32 letters, numbers or underscores and a password of 8–128 characters.' });
         }
         if (hashing || blocked(req.socket.remoteAddress, username)) {
           return respond(res, 429, { error: 'Too many sign-in attempts. Try again later.' });
