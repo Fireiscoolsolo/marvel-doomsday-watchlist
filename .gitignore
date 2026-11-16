@@ -1,0 +1,6 @@
+.watchlist-data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+.env.*
