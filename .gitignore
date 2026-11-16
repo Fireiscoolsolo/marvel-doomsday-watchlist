@@ -4,3 +4,4 @@
 *.sqlite-wal
 .env
 .env.*
+node_modules/
