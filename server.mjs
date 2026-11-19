@@ -27,6 +27,7 @@ export async function initializeStorage(storage, postgres = false) {
   await storage.query('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, account INTEGER NOT NULL REFERENCES accounts(id), expires BIGINT NOT NULL)');
   await storage.query('CREATE TABLE IF NOT EXISTS watched (account INTEGER NOT NULL REFERENCES accounts(id), title TEXT NOT NULL, PRIMARY KEY (account, title))');
   await storage.query('CREATE TABLE IF NOT EXISTS additions (account INTEGER NOT NULL REFERENCES accounts(id), title TEXT NOT NULL, PRIMARY KEY (account, title))');
+  await storage.query('CREATE TABLE IF NOT EXISTS season_progress (account INTEGER NOT NULL REFERENCES accounts(id), title TEXT NOT NULL, progress TEXT NOT NULL, PRIMARY KEY (account, title))');
 }
 
 export async function watchlistServer({ database, storage = sqlite(database), origin, html, postgres = false }) {
@@ -37,6 +38,7 @@ export async function watchlistServer({ database, storage = sqlite(database), or
   const cookie = (token, age) => cookieName + '=' + token + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + age + (secure ? '; Secure' : '');
   const titles = new Set([...html.matchAll(/<tr [^>]*\bdata-id="(\d+)"/g)].map(match => match[1]));
   const optionalTitles = new Set([...html.matchAll(/<li data-addition="(\d+)"/g)].map(match => match[1]));
+  const seasons = new Map([...html.matchAll(/<tr [^>]*data-id="(\d+)"[^>]*data-episodes="(\d+)"/g)].map(match => [match[1], Number(match[2])]));
   const attempts = new Map();
   let hashing = false;
 
@@ -102,6 +104,7 @@ export async function watchlistServer({ database, storage = sqlite(database), or
         username: profile?.username ?? null,
         watched: profile ? (await query('SELECT title FROM watched WHERE account = ?', profile.id)).map(row => row.title) : [],
         additions: profile ? (await query('SELECT title FROM additions WHERE account = ?', profile.id)).map(row => row.title) : [],
+        episodes: profile ? Object.fromEntries((await query('SELECT title, progress FROM season_progress WHERE account = ?', profile.id)).map(row => [row.title, JSON.parse(row.progress)])) : {},
       });
       if (req.method === 'GET' && path === '/api/session') return respond(res, 200, await status(account));
       if (req.method !== 'POST') return respond(res, 405, { error: 'Method unavailable.' });
@@ -170,6 +173,24 @@ export async function watchlistServer({ database, storage = sqlite(database), or
         if (optional && !(await query('SELECT title FROM additions WHERE account = ? AND title = ?', account.id, data.title)).length) {
           return respond(res, 409, { error: 'Add this title to your watchlist first.' });
         }
+        if (seasons.has(data.title)) {
+          const count = seasons.get(data.title);
+          if (data.episode !== undefined && (!Number.isInteger(data.episode) || data.episode < 1 || data.episode > count)) {
+            return respond(res, 400, { error: 'Invalid episode.' });
+          }
+          const legacy = (await query('SELECT title FROM watched WHERE account = ? AND title = ?', account.id, data.title)).length > 0;
+          const progress = Object.fromEntries(Array.from({ length: count }, (_, i) => [String(i + 1), data.episode === undefined ? data.watched : legacy]));
+          if (data.episode !== undefined) progress[data.episode] = data.watched;
+          const merge = postgres
+            ? "jsonb_set(season_progress.progress::jsonb, ARRAY[?]::text[], ?::jsonb)::text"
+            : "json_set(season_progress.progress, ?, json(?))";
+          const conflict = data.episode === undefined ? 'excluded.progress' : merge;
+          const args = [account.id, data.title, JSON.stringify(progress)];
+          if (data.episode !== undefined) args.push(postgres ? String(data.episode) : '$."' + data.episode + '"', JSON.stringify(data.watched));
+          await query('INSERT INTO season_progress (account, title, progress) VALUES (?, ?, ?) ON CONFLICT (account, title) DO UPDATE SET progress = ' + conflict, ...args);
+          return respond(res, 200, { saved: true });
+        }
+        if (data.episode !== undefined) return respond(res, 400, { error: 'Invalid episode.' });
         if (data.watched) {
           await query('INSERT INTO watched (account, title) VALUES (?, ?) ON CONFLICT (account, title) DO NOTHING', account.id, data.title);
         } else {
