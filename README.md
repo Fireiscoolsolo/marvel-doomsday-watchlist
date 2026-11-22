@@ -1,5 +1,7 @@
 # Marvel Doomsday Watchlist
 
+> An unofficial fan project. It is not affiliated with, endorsed by, or sponsored by Marvel or Disney. Marvel characters, titles and artwork belong to their respective owners.
+
 Run `node server.mjs` with Node.js 24 or newer and open `http://localhost:3000`. No package installation is needed.
 
 Visitors can create an account with a username and password. Guest checkmarks stay in the local browser and are separate from account progress. There is no email verification, outside sign-in provider, or password recovery.
